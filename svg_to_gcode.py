@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 import re
+import matplotlib.pyplot as plt
 
 
 def add_header(gcode_filename):
@@ -22,7 +23,26 @@ def add_footer(gcode_filename):
     gcode_file.close()
 
 
-def convert_svg_to_gcode(svg_filename, gcode_filename, area, keep_aspect=True):
+def visualize_paths(paths, area):
+    plt.figure()
+    x_min_desired, y_min_desired = area[0]
+    x_max_desired, y_max_desired = area[1]
+
+    for path in paths:
+        xs, ys = zip(*path)
+        plt.plot(xs, ys)
+
+    #plt.xlim(x_min_desired, x_max_desired)
+    #plt.ylim(y_min_desired, y_max_desired)
+    plt.gca().set_aspect('equal', adjustable='box')
+    plt.title('SVG to GCode Path Visualization')
+    plt.xlabel('X (mm)')
+    plt.ylabel('Y (mm)')
+    plt.grid(True)
+    plt.show()
+
+
+def convert_svg_to_gcode(svg_filename, gcode_filename, area, keep_aspect=True, visualize=False):
     """
     Convert an SVG file to a GCode file
     :param svg_filename: Name of the SVG file
@@ -95,6 +115,7 @@ def convert_svg_to_gcode(svg_filename, gcode_filename, area, keep_aspect=True):
     x_offset = x_min_desired - (min_x * x_scale) + x_pen + x_printer
     y_offset = y_min_desired - (min_y * y_scale) + y_pen + y_printer
 
+    paths = []
     for path in root.iter('{http://www.w3.org/2000/svg}path'):
         style = path.get('style')
         if 'fill:none' in style or 'fill: none' in style:
@@ -107,20 +128,27 @@ def convert_svg_to_gcode(svg_filename, gcode_filename, area, keep_aspect=True):
                 z_height = z_max_stroke
             gcode_file.write(f'G0 Z{z_height}\n')
 
+            path_coords = []
             commands = re.findall('([ML])\s*((?:-?\d+\.?\d*\s+){2})', d)
             for command, coords in commands:
                 x, y = coords.strip().split()
                 x = (float(x) * x_scale + x_offset)
                 y = (float(y) * y_scale + y_offset)
+                path_coords.append((x, y))
                 if command == 'M':
                     gcode_file.write(f'G91\nG0 Z {z_hop}\nG90\nG0 X{x} Y{y}\nG91\nG0 Z {-z_hop}\nG90')
                 elif command == 'L':
                     gcode_file.write(f'G1 X{x} Y{y}\n')
 
+            paths.append(path_coords)
+
     gcode_file.close()
 
     add_footer(gcode_filename)
 
+    if visualize:
+        visualize_paths(paths, area)
+
 
 if __name__ == '__main__':
-    convert_svg_to_gcode('try_2.svg', 'try_2.gcode', area=[[30, 30], [100, 100]], keep_aspect=True)
+    convert_svg_to_gcode('tatry_2.svg', 'tatry_2_test.gcode', area=[[30, 30], [160, 210]], keep_aspect=True, visualize=True)
