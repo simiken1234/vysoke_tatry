@@ -76,14 +76,18 @@ def add_terrain_plot(ax, xx, yy, z, plot_type='wireframe', **kwargs):
         ax.plot_surface(xx, yy, z, color=kwargs.get('color', 'white'), linewidth=kwargs.get('linewidth', 1),
                         antialiased=kwargs.get('antialiased', False), shade=kwargs.get('shade', False))
     elif plot_type == 'contour':
-        ax.contour(xx, yy, z, kwargs.get('contour_spacing', 30), colors=kwargs.get('colors', 'k'))
+        contour_spacing = kwargs.get('contour_spacing', 30)  # [m]
+        contour_levels = np.arange(np.nanmin(z), np.nanmax(z), contour_spacing)
+        ax.contour(xx, yy, z, contour_levels, colors=kwargs.get('colors', 'k'), linewidths=0.5)
+        ax.plot_wireframe(xx, yy, z, color=kwargs.get('color', 'black'), linewidth=kwargs.get('linewidth', 0.5),
+                          rcount=1, ccount=1, antialiased=True)
     else:
         raise ValueError("Invalid plot_type. Choose 'wireframe', 'surface', or 'contour'.")
 
 
 def add_path_plot(ax, path_points, **kwargs):
     """Add a GPS path to the terrain plot."""
-    ax.plot(path_points[:, 1], path_points[:, 0], path_points[:, 2], color=kwargs.get('color', 'red'), linewidth=kwargs.get('linewidth', 2), zorder=10)
+    ax.plot(path_points[:, 1], path_points[:, 0], path_points[:, 2], color=kwargs.get('color', 'red'), linewidth=1.5, zorder=10)
 
 
 def set_axis_scaling(ax, xx, yy, z, z_exaggeration=1.0):
@@ -110,11 +114,11 @@ def plot_terrain(gpx_contours_path=None, gpx_path_path=None, resolution=90, plot
     ax.set_xlabel('xx')
     ax.set_ylabel('yy')
     ax.set_zlabel('z')
-    # ax.view_init(elev=90, azim=-90)
+    ax.view_init(elev=60, azim=-148)
 
     contour_points, origin_lat, origin_lon = load_gpx_contours(gpx_contours_path)
     xx, yy, z = generate_grid(contour_points, resolution=resolution)
-    xx, yy, z = crop_grid(xx, yy, z, crop_xx=[2000, 8000], crop_yy=[3000, 10000])  # Opt comment out
+    xx, yy, z = crop_grid(xx, yy, z, crop_xx=[2000, 7500], crop_yy=[3500, 9000])  # Optionally comment out
     add_terrain_plot(ax, xx, yy, z, plot_type=plot_type, **kwargs)
 
     if gpx_path_path:
@@ -124,17 +128,20 @@ def plot_terrain(gpx_contours_path=None, gpx_path_path=None, resolution=90, plot
     set_axis_scaling(ax, xx, yy, z, z_exaggeration=kwargs.get('z_exaggeration', 1.0))
 
     if save_path:
+        ax.set_facecolor('white')
+        ax.grid(False)
+        ax.set_axis_off()
         plt.savefig(save_path, format='svg')
     else:
         plt.show()
 
 
 if __name__ == '__main__':
-    plot_terrain(gpx_contours_path='topography_gpx/triglav_contours.gpx', gpx_path_path='path_gpx/triglav_path.gpx', resolution=90, contour_spacing=30, plot_type='contour')
-
-# Reservoir of unused code for future reference
-# def trim_corners(xx, yy, z, trim=300):
-#     xx = xx[trim:-trim, trim:-trim]
-#     yy = yy[trim:-trim, trim:-trim]
-#     z = z[trim:-trim, trim:-trim]
-#     return xx, yy, z
+    plot_terrain(
+        gpx_contours_path='topography_gpx/triglav_contours.gpx',
+        gpx_path_path='path_gpx/triglav_path.gpx',
+        resolution=30,
+        contour_spacing=75,
+        plot_type='contour',
+        save_path='generated_svg/triglav.svg'
+    )
