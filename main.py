@@ -5,11 +5,27 @@ import matplotlib.pyplot as plt
 from scipy.interpolate import griddata, RegularGridInterpolator
 from mpl_toolkits.mplot3d import Axes3D
 
+import os
+import pickle
+import gpxpy
+import numpy as np
 
-def load_gpx_contours(file_path):
-    """Load and process GPX data into a point array."""
-    gpx_file = open(file_path, 'r')
-    gpx = gpxpy.parse(gpx_file)
+
+def load_gpx_contours(file_path, resolution, **kwargs):
+    """
+    Load and process GPX data into a point array, with caching using pickle.
+    """
+    pickle_path = file_path.replace('.gpx', '.pkl')
+    # Check if pickle file exists
+    if os.path.exists(pickle_path):
+        with open(pickle_path, 'rb') as pkl_file:
+            data = pickle.load(pkl_file)
+        print('Loaded from pickle')
+        return data['xx'], data['yy'], data['z'], data['origin_lat'], data['origin_lon']
+
+    # Load and process GPX file
+    with open(file_path, 'r') as gpx_file:
+        gpx = gpxpy.parse(gpx_file)
     points = []
     for route in gpx.routes:
         elevation = float(route.extensions[2].text)
@@ -23,13 +39,35 @@ def load_gpx_contours(file_path):
     mean_lat = np.mean(points[:, 0])
     points[:, 0] = (points[:, 0] - origin_lat) * 111000  # 1 degree latitude = 111 km
     points[:, 1] = (points[:, 1] - origin_lon) * 111000 * np.cos(mean_lat * np.pi / 180)
-    return points, origin_lat, origin_lon
+
+    xx, yy, z = generate_grid(points, resolution=resolution)
+    if 'crop_xx' in kwargs and 'crop_yy' in kwargs:
+        xx, yy, z = crop_grid(xx, yy, z, crop_xx=kwargs.get('crop_xx'), crop_yy=kwargs.get('crop_yy'))
+
+    # Save to pickle for future use
+    data = {'xx': xx, 'yy': yy, 'z': z, 'origin_lat': origin_lat, 'origin_lon': origin_lon}
+    with open(pickle_path, 'wb') as pkl_file:
+        pickle.dump(data, pkl_file)
+
+    return xx, yy, z, origin_lat, origin_lon
 
 
 def load_gpx_path(file_path, origin_lat, origin_lon, xx, yy, z):
-    """Load and process GPX path data into a point array, using the same origin as the contours and adjusting elevations."""
-    gpx_file = open(file_path, 'r')
-    gpx = gpxpy.parse(gpx_file)
+    """
+    Load and process GPX path data into a point array, with caching using pickle.
+    """
+    pickle_path = file_path.replace('.gpx', '.pkl')
+
+    # Check if pickle file exists
+    if os.path.exists(pickle_path):
+        with open(pickle_path, 'rb') as pkl_file:
+            points = pickle.load(pkl_file)
+        return points
+
+    # Load and process GPX file
+    with open(file_path, 'r') as gpx_file:
+        gpx = gpxpy.parse(gpx_file)
+
     points = []
     for point in gpx.tracks[0].segments[0].points:
         points.append([point.latitude, point.longitude, point.elevation])
@@ -43,6 +81,10 @@ def load_gpx_path(file_path, origin_lat, origin_lon, xx, yy, z):
     # Adjust elevations using the grid data
     interpolator = RegularGridInterpolator((yy[:, 0], xx[0, :]), z, bounds_error=False, fill_value=np.nan)
     points[:, 2] = interpolator((points[:, 0], points[:, 1]))
+
+    # Save to pickle for future use
+    with open(pickle_path, 'wb') as pkl_file:
+        pickle.dump(points, pkl_file)
 
     return points
 
@@ -163,10 +205,7 @@ def plot_terrain(gpx_contours_path=None, gpx_path_path=None, resolution=90, save
     ax.view_init(elev=kwargs.get('elev'), azim=kwargs.get('azim'))
 
     print("Loading contour data...")
-    contour_points, origin_lat, origin_lon = load_gpx_contours(gpx_contours_path)
-    xx, yy, z = generate_grid(contour_points, resolution=resolution)
-    if 'crop_xx' in kwargs and 'crop_yy' in kwargs:
-        xx, yy, z = crop_grid(xx, yy, z, crop_xx=kwargs.get('crop_xx'), crop_yy=kwargs.get('crop_yy'))
+    xx, yy, z, origin_lat, origin_lon = load_gpx_contours(gpx_contours_path, resolution, **kwargs)
     print("Plotting terrain...")
     add_terrain_plot(ax, xx, yy, z, **kwargs)
     print("Plotting radial lines...")
