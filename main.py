@@ -13,11 +13,20 @@ import pickle
 import rasterio
 
 
-def load_gpx_contours(file_path, resolution, **kwargs):
+def load_terrain(file_path, resolution=None, **kwargs):
     """
-    Load and process GPX data into a point array, with caching using pickle.
+    Load and process geospatial data from GPX or GeoTIFF files, with caching using pickle.
+
+    Args:
+        file_path (str): Path to the input file (.gpx or .tif).
+        resolution (int, optional): Desired resolution for grid generation.
+        **kwargs: Additional arguments for cropping and processing.
+
+    Returns:
+        tuple: (xx, yy, z, origin_lat, origin_lon)
     """
-    pickle_path = file_path.replace('.gpx', '.pkl')
+    pickle_path = file_path.replace('.gpx', '.pkl').replace('.tif', '.pkl')
+
     # Check if pickle file exists
     if os.path.exists(pickle_path):
         with open(pickle_path, 'rb') as pkl_file:
@@ -25,26 +34,49 @@ def load_gpx_contours(file_path, resolution, **kwargs):
         print('Loaded from pickle')
         return data['xx'], data['yy'], data['z'], data['origin_lat'], data['origin_lon']
 
-    # Load and process GPX file
-    with open(file_path, 'r') as gpx_file:
-        gpx = gpxpy.parse(gpx_file)
-    points = []
-    for route in gpx.routes:
-        elevation = float(route.extensions[2].text)
-        for point in route.points:
-            points.append([point.latitude, point.longitude, elevation])
-    points = np.array(points)
+    # Load data based on file type
+    if file_path.lower().endswith('.gpx'):
+        # Load GPX data
+        with open(file_path, 'r') as gpx_file:
+            gpx = gpxpy.parse(gpx_file)
+        points = []
+        for route in gpx.routes:
+            elevation = float(route.extensions[2].text)
+            for point in route.points:
+                points.append([point.latitude, point.longitude, elevation])
+        points = np.array(points)
 
-    # Transform latitude and longitude to meters
-    origin_lat = np.min(points[:, 0])
-    origin_lon = np.min(points[:, 1])
-    mean_lat = np.mean(points[:, 0])
-    points[:, 0] = (points[:, 0] - origin_lat) * 111000  # 1 degree latitude = 111 km
-    points[:, 1] = (points[:, 1] - origin_lon) * 111000 * np.cos(mean_lat * np.pi / 180)
+        # Transform latitude and longitude to meters
+        origin_lat = np.min(points[:, 0])
+        origin_lon = np.min(points[:, 1])
+        mean_lat = np.mean(points[:, 0])
+        points[:, 0] = (points[:, 0] - origin_lat) * 111000  # 1 degree latitude = 111 km
+        points[:, 1] = (points[:, 1] - origin_lon) * 111000 * np.cos(mean_lat * np.pi / 180)
 
-    xx, yy, z = generate_grid(points, resolution=resolution)
-    if 'crop_xx' in kwargs and 'crop_yy' in kwargs:
-        xx, yy, z = crop_grid(xx, yy, z, crop_xx=kwargs.get('crop_xx'), crop_yy=kwargs.get('crop_yy'))
+        xx, yy, z = generate_grid(points, resolution=resolution)
+
+    elif file_path.lower().endswith(('.tif', '.tiff')):
+        # Load GeoTIFF data
+        with rasterio.open(file_path) as src:
+            z = src.read(1)  # Read the first band
+            transform = src.transform
+
+            # Generate coordinates
+            rows, cols = z.shape
+            xx, yy = np.meshgrid(
+                np.linspace(transform[2], transform[2] + transform[0] * cols, cols),
+                np.linspace(transform[5], transform[5] + transform[4] * rows, rows)
+            )
+
+            # Convert GeoTIFF coordinates to meters relative to the origin
+            origin_lat = np.min(yy)
+            origin_lon = np.min(xx)
+            mean_lat = np.mean(yy)
+            xx = (xx - origin_lon) * 111000 * np.cos(mean_lat * np.pi / 180)
+            yy = (yy - origin_lat) * 111000
+
+    else:
+        raise ValueError("Unsupported file format. Supported formats are .gpx and .tif/.tiff.")
 
     # Save to pickle for future use
     data = {'xx': xx, 'yy': yy, 'z': z, 'origin_lat': origin_lat, 'origin_lon': origin_lon}
@@ -197,7 +229,7 @@ def set_axis_scaling(ax, xx, yy, z, z_exaggeration=1.0):
     ax.set_zlim(mid_z - max_range / z_exaggeration, mid_z + max_range / z_exaggeration)
 
 
-def plot_terrain(ax, gpx_contours_path=None, gpx_path_path=None, resolution=90, save_path=None, **kwargs):
+def plot_terrain(ax, gpx_contours_path=None, gpx_path_path=None, resolution=None, save_path=None, **kwargs):
     """Main function to load data, generate grid, and create a 3D plot."""
     # fig = plt.figure()
     # ax = fig.add_subplot(111, projection='3d')
@@ -207,7 +239,9 @@ def plot_terrain(ax, gpx_contours_path=None, gpx_path_path=None, resolution=90, 
     ax.view_init(elev=kwargs.get('elev'), azim=kwargs.get('azim'))
 
     print("Loading contour data...")
-    xx, yy, z, origin_lat, origin_lon = load_gpx_contours(gpx_contours_path, resolution, **kwargs)
+    xx, yy, z, origin_lat, origin_lon = load_terrain(gpx_contours_path, resolution, **kwargs)
+    if 'crop_xx' in kwargs and 'crop_yy' in kwargs:
+        xx, yy, z = crop_grid(xx, yy, z, crop_xx=kwargs.get('crop_xx'), crop_yy=kwargs.get('crop_yy'))
     print("Plotting terrain...")
     add_terrain_plot(ax, xx, yy, z, **kwargs)
     print("Plotting radial lines...")
@@ -242,15 +276,19 @@ def create_interactive_window():
         plot_terrain(
             ax=ax,
             # Paths
-            gpx_contours_path='topography_gpx/triglav_contours.gpx',
-            gpx_path_path='path_gpx/triglav_path.gpx',
+            gpx_contours_path='topography_gpx/slavkovsky.tif',
+            gpx_path_path='path_gpx/slavkovsky.gpx',
             # save_path='generated_svg/triglav_2.svg',  # Comment out if saving not desired
             # Terrain viz settings
             resolution=30,  # [m]
             contour_spacing=float(contour_spacing.get()),  # [m]
             n_radials=int(num_radials.get()),
-            crop_xx=[2000, 7500],  # [m]
-            crop_yy=[3500, 9000],  # [m]
+            # Slavkovsky crop
+            crop_xx=[1500, 7000],  # [m]
+            crop_yy=[1000, 6500],  # [m]
+            # Triglav crop
+            #crop_xx=[2000, 7500],  # [m]
+            #crop_yy=[3500, 9000],  # [m]
             z_exaggeration=1.0,  # Vertical exaggeration, 1.0 = no exaggeration
             # Colors
             path_color=path_color.get(),
@@ -271,7 +309,7 @@ def create_interactive_window():
 
     def save_plot():
         """Save the current plot as an SVG."""
-        file_path = 'generated_svg/triglav_2.svg'  # Define the output file name
+        file_path = 'generated_svg/slavkovsky.svg'  # Define the output file name
         fig.savefig(file_path, format='svg')
         print(f"Plot saved as {file_path}")
 
@@ -334,9 +372,9 @@ def create_interactive_window():
     fig.canvas.mpl_connect("draw_event", update_view_label)
 
     # Define Tkinter variables for colors and parameters
-    path_color = tk.StringVar(value='yellow')
-    radial_lines_color = tk.StringVar(value='magenta')
-    contours_color = tk.StringVar(value='deepskyblue')
+    path_color = tk.StringVar(value='gray')
+    radial_lines_color = tk.StringVar(value='red')
+    contours_color = tk.StringVar(value='lightgray')
     borders_color = tk.StringVar(value='black')
     num_radials = tk.StringVar(value='15')
     contour_spacing = tk.StringVar(value='100.0')
