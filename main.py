@@ -4,11 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.interpolate import griddata, RegularGridInterpolator
 from mpl_toolkits.mplot3d import Axes3D
-
+import tkinter as tk
+from tkinter import colorchooser
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from PIL import Image, ImageTk
 import os
 import pickle
-import gpxpy
-import numpy as np
+import rasterio
 
 
 def load_gpx_contours(file_path, resolution, **kwargs):
@@ -195,10 +197,10 @@ def set_axis_scaling(ax, xx, yy, z, z_exaggeration=1.0):
     ax.set_zlim(mid_z - max_range / z_exaggeration, mid_z + max_range / z_exaggeration)
 
 
-def plot_terrain(gpx_contours_path=None, gpx_path_path=None, resolution=90, save_path=None, **kwargs):
+def plot_terrain(ax, gpx_contours_path=None, gpx_path_path=None, resolution=90, save_path=None, **kwargs):
     """Main function to load data, generate grid, and create a 3D plot."""
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
     ax.set_xlabel('xx')
     ax.set_ylabel('yy')
     ax.set_zlabel('z')
@@ -232,31 +234,176 @@ def plot_terrain(gpx_contours_path=None, gpx_path_path=None, resolution=90, save
         plt.show()
 
 
+def create_interactive_window():
+    """Create a Tkinter window for interactive color adjustment."""
+    def update_plot():
+        """Update the plot with new colors."""
+        ax.clear()  # Clear the current plot
+        plot_terrain(
+            ax=ax,
+            # Paths
+            gpx_contours_path='topography_gpx/triglav_contours.gpx',
+            gpx_path_path='path_gpx/triglav_path.gpx',
+            # save_path='generated_svg/triglav_2.svg',  # Comment out if saving not desired
+            # Terrain viz settings
+            resolution=30,  # [m]
+            contour_spacing=float(contour_spacing.get()),  # [m]
+            n_radials=int(num_radials.get()),
+            crop_xx=[2000, 7500],  # [m]
+            crop_yy=[3500, 9000],  # [m]
+            z_exaggeration=1.0,  # Vertical exaggeration, 1.0 = no exaggeration
+            # Colors
+            path_color=path_color.get(),
+            radial_lines_color=radial_lines_color.get(),
+            contours_color=contours_color.get(),
+            borders_color=borders_color.get(),
+            # Line widths
+            path_width=float(path_width.get()),
+            radial_lines_width=float(radial_lines_width.get()),
+            contours_width=float(contours_width.get()),
+            borders_width=float(borders_width.get()),
+            # Plot settings
+            show_axes=False,
+            elev=38,
+            azim=75
+        )
+        canvas.draw()  # Redraw the updated plot
+
+    def save_plot():
+        """Save the current plot as an SVG."""
+        file_path = 'generated_svg/triglav_2.svg'  # Define the output file name
+        fig.savefig(file_path, format='svg')
+        print(f"Plot saved as {file_path}")
+
+    def pick_color(variable):
+        """Open a color chooser and set the selected color to the variable."""
+        color = colorchooser.askcolor()[1]  # Get the selected color
+        if color:
+            variable.set(color)  # Update the Tkinter variable
+            update_plot()  # Update the plot with the new color
+
+    def pick_color_from_image(variable):
+        """Open an image, allow the user to pick a color by clicking on it, and update the plot."""
+        def on_click(event):
+            # Get the color of the clicked pixel
+            x, y = int(event.x), int(event.y)
+            rgb = image.getpixel((x, y))
+            hex_color = f"#{rgb[0]:02x}{rgb[1]:02x}{rgb[2]:02x}"
+            variable.set(hex_color)  # Update the color variable
+            update_plot()  # Update the plot with the new color
+            img_window.destroy()  # Close the image window after picking
+
+        file_path = 'palette.jpg'
+
+        # Open and display the image
+        img_window = tk.Toplevel(root)
+        img_window.title("Pick a Color from Image")
+        image = Image.open(file_path)
+        tk_image = ImageTk.PhotoImage(image)
+        img_label = tk.Label(img_window, image=tk_image)
+        img_label.image = tk_image
+        img_label.pack()
+
+        # Bind click event to get color
+        img_label.bind("<Button-1>", on_click)
+
+    def update_view_label(event):
+        """Update the view angle label with the current elevation and azimuth."""
+        elev = ax.elev
+        azim = ax.azim
+        view_label.config(text=f"Elevation: {elev:.1f}°, Azimuth: {azim:.1f}°")
+
+    # Create Tkinter window
+    root = tk.Tk()
+    root.title("Interactive Terrain Plot")
+
+    # Create Matplotlib figure and axis
+    fig = plt.Figure(figsize=(8, 6))
+    ax = fig.add_subplot(111, projection='3d')
+
+    # Embed Matplotlib figure in Tkinter window
+    canvas = FigureCanvasTkAgg(fig, master=root)
+    canvas_widget = canvas.get_tk_widget()
+    canvas_widget.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
+
+    # Add a label to display the current view angles
+    view_label = tk.Label(root, text="Elevation: 0°, Azimuth: 0°", anchor='e')
+    view_label.pack(side=tk.BOTTOM, fill=tk.X)
+
+    # Connect Matplotlib's draw event to update the label
+    fig.canvas.mpl_connect("draw_event", update_view_label)
+
+    # Define Tkinter variables for colors and parameters
+    path_color = tk.StringVar(value='yellow')
+    radial_lines_color = tk.StringVar(value='magenta')
+    contours_color = tk.StringVar(value='deepskyblue')
+    borders_color = tk.StringVar(value='black')
+    num_radials = tk.StringVar(value='15')
+    contour_spacing = tk.StringVar(value='100.0')
+    path_width = tk.StringVar(value='0.5')
+    radial_lines_width = tk.StringVar(value='0.5')
+    contours_width = tk.StringVar(value='0.5')
+    borders_width = tk.StringVar(value='0.5')
+
+    # Controls frame for organizing options
+    controls_frame = tk.Frame(root)
+    controls_frame.pack(side=tk.BOTTOM, fill=tk.X)
+
+    # First row: Radial lines and contour spacing
+    row1 = tk.Frame(controls_frame)
+    row1.pack(side=tk.TOP, fill=tk.X)
+
+    tk.Label(row1, text="Radial Lines:").pack(side=tk.LEFT)
+    tk.Entry(row1, textvariable=num_radials, width=5).pack(side=tk.LEFT)
+
+    tk.Label(row1, text="Contour Spacing:").pack(side=tk.LEFT)
+    tk.Entry(row1, textvariable=contour_spacing, width=5).pack(side=tk.LEFT)
+
+    # Second row: Line widths
+    row2 = tk.Frame(controls_frame)
+    row2.pack(side=tk.TOP, fill=tk.X)
+
+    tk.Label(row2, text="Radial Line Width:").pack(side=tk.LEFT)
+    tk.Entry(row2, textvariable=radial_lines_width, width=5).pack(side=tk.LEFT)
+
+    tk.Label(row2, text="Path Line Width:").pack(side=tk.LEFT)
+    tk.Entry(row2, textvariable=path_width, width=5).pack(side=tk.LEFT)
+
+    tk.Label(row2, text="Border Line Width:").pack(side=tk.LEFT)
+    tk.Entry(row2, textvariable=borders_width, width=5).pack(side=tk.LEFT)
+
+    tk.Label(row2, text="Contour Line Width:").pack(side=tk.LEFT)
+    tk.Entry(row2, textvariable=contours_width, width=5).pack(side=tk.LEFT)
+
+    # Third row: Color pickers
+    row3 = tk.Frame(controls_frame)
+    row3.pack(side=tk.TOP, fill=tk.X)
+
+    tk.Label(row3, text="Path Color:").pack(side=tk.LEFT)
+    tk.Button(row3, text="Pick from Image", command=lambda: pick_color_from_image(path_color)).pack(side=tk.LEFT)
+
+    tk.Label(row3, text="Radial Lines Color:").pack(side=tk.LEFT)
+    tk.Button(row3, text="Pick from Image", command=lambda: pick_color_from_image(radial_lines_color)).pack(side=tk.LEFT)
+
+    tk.Label(row3, text="Contours Color:").pack(side=tk.LEFT)
+    tk.Button(row3, text="Pick from Image", command=lambda: pick_color_from_image(contours_color)).pack(side=tk.LEFT)
+
+    tk.Label(row3, text="Borders Color:").pack(side=tk.LEFT)
+    tk.Button(row3, text="Pick from Image", command=lambda: pick_color_from_image(borders_color)).pack(side=tk.LEFT)
+
+    # Fourth row: Redraw button, Save button
+    row4 = tk.Frame(controls_frame)
+    row4.pack(side=tk.TOP, fill=tk.X)
+
+    tk.Button(row4, text="Redraw", command=update_plot).pack(side=tk.LEFT)
+    tk.Button(row4, text="Save as SVG", command=save_plot).pack(side=tk.LEFT)
+
+    # Initial plot
+    update_plot()
+
+    # Run the Tkinter event loop
+    root.mainloop()
+
+
 if __name__ == '__main__':
-    plot_terrain(
-        # Paths
-        gpx_contours_path='topography_gpx/triglav_contours.gpx',
-        gpx_path_path='path_gpx/triglav_path.gpx',
-        #save_path='generated_svg/triglav_2.svg',  # Comment out if saving not desired
-        # Terrain viz settings
-        resolution=30,  # [m]
-        contour_spacing=100,  # [m]
-        n_radials=15,
-        crop_xx=[2000, 7500],  # [m]
-        crop_yy=[3500, 9000],  # [m]
-        z_exaggeration=1.0,  # Vertical exaggeration, 1.0 = no exaggeration
-        # Colors
-        path_color='yellow',
-        radial_lines_color='magenta',
-        contours_color='deepskyblue',
-        borders_color='black',
-        # Line widths
-        path_width=0.5,
-        radial_lines_width=0.5,
-        contours_width=0.5,
-        borders_width=0.5,
-        # Plot settings
-        show_axes=False,
-        elev=38,
-        azim=75
-    )
+    create_interactive_window()
