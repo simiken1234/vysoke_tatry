@@ -163,9 +163,10 @@ def convert_svg_to_gcode(svg_filename, gcode_filename, canvas_origin, canvas_ext
 
     calibration_point = [canvas_origin[0] + calibration_point[0], canvas_origin[1] + calibration_point[1]]
     gcode_file.write(f'G90\nG0 Z {canvas_origin[2] + 10}\n')
-    for styled_commands in styled_commands_groups:
+    for i, styled_commands in enumerate(styled_commands_groups):
         # Move to calibration_point, print the style on the board, pause, execute all for the style, repeat.
         # Move to calibration point to put pen in holder
+        print(f'{i+1}. color: {styled_commands.style.color}, width: {styled_commands.style.width}')
         gcode_file.write(f'G90\nG0 X{calibration_point[0]} Y{calibration_point[1]}\n')
         gcode_file.write(f'G0 Z {canvas_origin[2]}\n')
         # Write style to display
@@ -204,13 +205,13 @@ def convert_svg_to_gcode(svg_filename, gcode_filename, canvas_origin, canvas_ext
 
 if __name__ == '__main__':
     convert_svg_to_gcode(
-        'generated_svg/triglav.svg',
-        'generated_gcode/triglav.gcode',
-        canvas_origin=[70, 32, 20],
-        canvas_extents=[119, 75],
+        'generated_svg/triglav_2.svg',
+        'generated_gcode/triglav_2.gcode',
+        canvas_origin=[38, 17, 20],
+        canvas_extents=[120, 104],
         margins=[10, 10],
-        calibration_point=[10, 10],
-        z_hop=1.5,
+        calibration_point=[12, 12],
+        z_hop=2,
         center=True,
         keep_aspect=True,
         visualize=True
