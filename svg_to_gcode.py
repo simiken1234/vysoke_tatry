@@ -61,6 +61,10 @@ class StyledCommands:
     def __init__(self, style):
         self.style = style
         self.commands = []
+        self.x_offset = 0
+
+    def set_x_offset(self, x_offset):
+        self.x_offset = x_offset
 
 
 def convert_svg_to_gcode(svg_filename, gcode_filename, canvas_origin, canvas_extents, margins, calibration_point, z_hop, center=True, keep_aspect=True, visualize=False):
@@ -161,7 +165,7 @@ def convert_svg_to_gcode(svg_filename, gcode_filename, canvas_origin, canvas_ext
 
     # Write GCode
 
-    calibration_point = [canvas_origin[0] + calibration_point[0], canvas_origin[1] + calibration_point[1]]
+    #calibration_point = [canvas_origin[0] + calibration_point[0], canvas_origin[1] + calibration_point[1]]
     gcode_file.write(f'G90\nG0 Z {canvas_origin[2] + 10}\n')
     for i, styled_commands in enumerate(styled_commands_groups):
         # Move to calibration_point, print the style on the board, pause, execute all for the style, repeat.
@@ -172,11 +176,8 @@ def convert_svg_to_gcode(svg_filename, gcode_filename, canvas_origin, canvas_ext
         # Write style to display
         gcode_file.write(f'M117 C:{styled_commands.style.color} W:{styled_commands.style.width}\n')
         # Vibrate to signal start of new style
-        gcode_file.write(f'M400\nM300 S300 P500\n')
+        gcode_file.write(f'M400\nM300 S300 P300\n')
         gcode_file.write(f'M400\nG4 P500\n')
-        gcode_file.write(f'M400\nM300 S300 P500\n')
-        gcode_file.write(f'M400\nG4 P500\n')
-        gcode_file.write(f'M400\nM300 S300 P500\n')
         # Pause print
         gcode_file.write(f'M400\nM0\n')
         # Print resuming printing
@@ -184,13 +185,17 @@ def convert_svg_to_gcode(svg_filename, gcode_filename, canvas_origin, canvas_ext
         # Move the pen off the paper
         gcode_file.write(f'G91\nG0 Z {canvas_origin[2] + 10}\nG90\n')
         # Move to the first point
-        gcode_file.write(f'G0 X{styled_commands.commands[0].x} Y{styled_commands.commands[0].y} Z{canvas_origin[2]}\n')
+        gcode_file.write(f'G0 X{styled_commands.commands[0].x} Y{styled_commands.commands[0].y} Z{canvas_origin[2] + 10}\n')
+        gcode_file.write(f'G0 Z{canvas_origin[2]}\n')
         # Cycle through all commands
         for command in styled_commands.commands:
+            x_offset = 0
+            if styled_commands.style.color == '#808080':
+                x_offset = 0
             if command.write:
-                gcode_file.write(f'G0 X{command.x} Y{command.y}\n')
+                gcode_file.write(f'G0 X{command.x + x_offset} Y{command.y}\n')
             else:
-                gcode_file.write(f'G91\nG0 Z {z_hop}\nG90\nG0 X{command.x} Y{command.y}\nG91\nG0 Z {-z_hop}\nG90\n')
+                gcode_file.write(f'G91\nG0 Z {z_hop}\nG90\nG0 X{command.x + x_offset} Y{command.y}\nG91\nG0 Z {-z_hop}\nG90\n')
         # Move the pen off the paper
         gcode_file.write(f'G91\nG0 Z {canvas_origin[2] + 10}\nG90\n')
     # Move the pen off the paper
@@ -205,12 +210,12 @@ def convert_svg_to_gcode(svg_filename, gcode_filename, canvas_origin, canvas_ext
 
 if __name__ == '__main__':
     convert_svg_to_gcode(
-        'generated_svg/triglav_2.svg',
-        'generated_gcode/triglav_2.gcode',
+        'generated_svg/triglav_3.svg',
+        'generated_gcode/triglav_3.gcode',
         canvas_origin=[38, 17, 20],
-        canvas_extents=[120, 104],
-        margins=[10, 10],
-        calibration_point=[12, 12],
+        canvas_extents=[100, 150],
+        margins=[8, 8],
+        calibration_point=[90, 235],
         z_hop=2,
         center=True,
         keep_aspect=True,

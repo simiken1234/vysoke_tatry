@@ -256,8 +256,8 @@ def plot_terrain(ax, gpx_contours_path=None, gpx_path_path=None, resolution=None
     print("Setting axis scaling...")
     set_axis_scaling(ax, xx, yy, z, z_exaggeration=kwargs.get('z_exaggeration', 1.0))
 
+    ax.set_facecolor(kwargs.get('background_color', 'white'))
     if not kwargs.get('show_axes', True):
-        ax.set_facecolor('white')
         ax.grid(False)
         ax.set_axis_off()
 
@@ -276,25 +276,29 @@ def create_interactive_window():
         plot_terrain(
             ax=ax,
             # Paths
-            gpx_contours_path='topography_gpx/slavkovsky.tif',
-            gpx_path_path='path_gpx/slavkovsky.gpx',
+            gpx_contours_path='topography_gpx/gerlach.tif',
+            gpx_path_path='path_gpx/gerlach.gpx',
             # save_path='generated_svg/triglav_2.svg',  # Comment out if saving not desired
             # Terrain viz settings
             resolution=30,  # [m]
             contour_spacing=float(contour_spacing.get()),  # [m]
             n_radials=int(num_radials.get()),
             # Slavkovsky crop
-            crop_xx=[1500, 7000],  # [m]
-            crop_yy=[1000, 6500],  # [m]
+            # crop_xx=[2000, 7000],  # [m]
+            # crop_yy=[1000, 6000],  # [m]
+            # Gerlach crop
+            crop_xx=[1500, 5000],  # [m]
+            crop_yy=[2500, 6000],  # [m]
             # Triglav crop
-            #crop_xx=[2000, 7500],  # [m]
-            #crop_yy=[3500, 9000],  # [m]
+            # crop_xx=[2000, 7500],  # [m]
+            # crop_yy=[3500, 9000],  # [m]
             z_exaggeration=1.0,  # Vertical exaggeration, 1.0 = no exaggeration
             # Colors
             path_color=path_color.get(),
             radial_lines_color=radial_lines_color.get(),
             contours_color=contours_color.get(),
             borders_color=borders_color.get(),
+            background_color=background_color.get(),
             # Line widths
             path_width=float(path_width.get()),
             radial_lines_width=float(radial_lines_width.get()),
@@ -309,7 +313,7 @@ def create_interactive_window():
 
     def save_plot():
         """Save the current plot as an SVG."""
-        file_path = 'generated_svg/slavkovsky.svg'  # Define the output file name
+        file_path = 'generated_svg/gerlach.svg'  # Define the output file name
         fig.savefig(file_path, format='svg')
         print(f"Plot saved as {file_path}")
 
@@ -376,6 +380,7 @@ def create_interactive_window():
     radial_lines_color = tk.StringVar(value='red')
     contours_color = tk.StringVar(value='lightgray')
     borders_color = tk.StringVar(value='black')
+    background_color = tk.StringVar(value='white')
     num_radials = tk.StringVar(value='15')
     contour_spacing = tk.StringVar(value='100.0')
     path_width = tk.StringVar(value='0.5')
@@ -428,6 +433,9 @@ def create_interactive_window():
 
     tk.Label(row3, text="Borders Color:").pack(side=tk.LEFT)
     tk.Button(row3, text="Pick from Image", command=lambda: pick_color_from_image(borders_color)).pack(side=tk.LEFT)
+
+    tk.Label(row3, text="Background Color:").pack(side=tk.LEFT)
+    tk.Button(row3, text="Pick from Image", command=lambda: pick_color_from_image(background_color)).pack(side=tk.LEFT)
 
     # Fourth row: Redraw button, Save button
     row4 = tk.Frame(controls_frame)
